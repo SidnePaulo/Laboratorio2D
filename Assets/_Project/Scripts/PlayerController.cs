@@ -27,7 +27,7 @@ public sealed class PlayerController : MonoBehaviour
 
         if (Input.GetButtonDown("Jump") && isGrounded)
         {
-            body.velocity = new Vector2(body.velocity.x, jumpForce);
+            body.linearVelocity = new Vector2(body.linearVelocity.x, jumpForce);
         }
 
         if (horizontalInput != 0f)
@@ -38,6 +38,6 @@ public sealed class PlayerController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        body.velocity = new Vector2(horizontalInput * speed, body.velocity.y);
+        body.linearVelocity = new Vector2(horizontalInput * speed, body.linearVelocity.y);
     }
 }

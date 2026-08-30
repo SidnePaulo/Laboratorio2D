@@ -65,7 +65,7 @@ public static class ProjectBuilder
         Require(Mathf.Approximately(serializedController.FindProperty("groundRadius").floatValue, 0.1f), "Ground radius must be 0.1.");
         Require(Mathf.Approximately(body.gravityScale, 2f), "Player gravity scale must be 2.");
         Require(Mathf.Approximately(body.mass, 1f), "Player mass must be 1.");
-        Require(Mathf.Approximately(body.drag, 0f), "Player linear drag must be 0.");
+        Require(Mathf.Approximately(body.linearDamping, 0f), "Player linear drag must be 0.");
         Require(body.collisionDetectionMode == CollisionDetectionMode2D.Continuous, "Player collision detection must be Continuous.");
         Require(body.interpolation == RigidbodyInterpolation2D.Interpolate, "Player interpolation must be enabled.");
         Require((body.constraints & RigidbodyConstraints2D.FreezeRotation) != 0, "Player Z rotation must be frozen.");
@@ -167,7 +167,7 @@ public static class ProjectBuilder
             AssetDatabase.CreateAsset(pipeline, pipelinePath);
         }
 
-        GraphicsSettings.renderPipelineAsset = pipeline;
+        GraphicsSettings.defaultRenderPipeline = pipeline;
         QualitySettings.renderPipeline = pipeline;
     }
 
@@ -241,7 +241,7 @@ public static class ProjectBuilder
         body.constraints = RigidbodyConstraints2D.FreezeRotation;
         body.gravityScale = 2f;
         body.mass = 1f;
-        body.drag = 0f;
+        body.linearDamping = 0f;
         body.sharedMaterial = zeroFriction;
         CapsuleCollider2D capsule = player.GetComponent<CapsuleCollider2D>();
         capsule.direction = CapsuleDirection2D.Vertical;
