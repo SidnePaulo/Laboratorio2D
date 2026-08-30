@@ -43,17 +43,29 @@ public static class ProjectBuilder
         GameObject grid = RequireObject(scene, "Grid");
         GameObject level = RequireObject(scene, "Grid/Level");
         GameObject player = RequireObject(scene, "Player");
+        GameObject groundCheck = RequireObject(scene, "Player/GroundCheck");
         GameObject cameraObject = RequireObject(scene, "Main Camera");
 
         Grid gridComponent = RequireComponent<Grid>(grid);
         Require(gridComponent.cellSize == new Vector3(0.32f, 0.32f, 0f), "Grid cell size must be 0.32 x 0.32.");
         RequireComponent<Tilemap>(level);
         RequireComponent<TilemapCollider2D>(level);
+        int floorLayer = LayerMask.NameToLayer("Floor");
+        Require(floorLayer >= 0, "Floor layer must exist.");
+        Require(level.layer == floorLayer, "Level must use the Floor layer.");
 
         Rigidbody2D body = RequireComponent<Rigidbody2D>(player);
         RequireComponent<CapsuleCollider2D>(player);
-        RequireComponent<PlayerController>(player);
+        PlayerController controller = RequireComponent<PlayerController>(player);
         SpriteRenderer playerRenderer = RequireComponent<SpriteRenderer>(player);
+        SerializedObject serializedController = new SerializedObject(controller);
+        Require(serializedController.FindProperty("groundCheck").objectReferenceValue == groundCheck.transform, "GroundCheck reference must be assigned.");
+        Require(serializedController.FindProperty("groundLayer").intValue == (1 << floorLayer), "Ground layer mask must target Floor.");
+        Require(Mathf.Approximately(serializedController.FindProperty("jumpForce").floatValue, 4f), "Jump force must be 4.");
+        Require(Mathf.Approximately(serializedController.FindProperty("groundRadius").floatValue, 0.1f), "Ground radius must be 0.1.");
+        Require(Mathf.Approximately(body.gravityScale, 2f), "Player gravity scale must be 2.");
+        Require(Mathf.Approximately(body.mass, 1f), "Player mass must be 1.");
+        Require(Mathf.Approximately(body.drag, 0f), "Player linear drag must be 0.");
         Require(body.collisionDetectionMode == CollisionDetectionMode2D.Continuous, "Player collision detection must be Continuous.");
         Require(body.interpolation == RigidbodyInterpolation2D.Interpolate, "Player interpolation must be enabled.");
         Require((body.constraints & RigidbodyConstraints2D.FreezeRotation) != 0, "Player Z rotation must be frozen.");
@@ -192,6 +204,7 @@ public static class ProjectBuilder
 
         GameObject levelObject = new GameObject("Level", typeof(Tilemap), typeof(TilemapRenderer), typeof(TilemapCollider2D));
         levelObject.transform.SetParent(gridObject.transform);
+        levelObject.layer = LayerMask.NameToLayer("Floor");
         Tilemap tilemap = levelObject.GetComponent<Tilemap>();
         TilemapRenderer tilemapRenderer = levelObject.GetComponent<TilemapRenderer>();
         tilemapRenderer.sortingOrder = 0;
@@ -212,12 +225,24 @@ public static class ProjectBuilder
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         body.interpolation = RigidbodyInterpolation2D.Interpolate;
         body.constraints = RigidbodyConstraints2D.FreezeRotation;
+        body.gravityScale = 2f;
+        body.mass = 1f;
+        body.drag = 0f;
         body.sharedMaterial = zeroFriction;
         CapsuleCollider2D capsule = player.GetComponent<CapsuleCollider2D>();
         capsule.direction = CapsuleDirection2D.Vertical;
         capsule.size = new Vector2(0.30f, 0.42f);
         capsule.offset = new Vector2(0f, -0.02f);
         capsule.sharedMaterial = zeroFriction;
+
+        GameObject groundCheck = new GameObject("GroundCheck");
+        groundCheck.transform.SetParent(player.transform);
+        groundCheck.transform.localPosition = new Vector3(0f, -0.24f, 0f);
+        PlayerController controller = player.GetComponent<PlayerController>();
+        SerializedObject serializedController = new SerializedObject(controller);
+        serializedController.FindProperty("groundCheck").objectReferenceValue = groundCheck.transform;
+        serializedController.FindProperty("groundLayer").intValue = 1 << LayerMask.NameToLayer("Floor");
+        serializedController.ApplyModifiedPropertiesWithoutUndo();
 
         GameObject cameraObject = new GameObject("Main Camera", typeof(Camera), typeof(UniversalAdditionalCameraData));
         cameraObject.tag = "MainCamera";
