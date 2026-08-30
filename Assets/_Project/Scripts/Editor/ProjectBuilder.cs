@@ -28,7 +28,7 @@ public static class ProjectBuilder
 
         ConfigureUniversal2D();
         PhysicsMaterial2D zeroFriction = CreatePhysicsMaterial();
-        TileBase sandTile = CreateSandTile();
+        Tile sandTile = CreateSandTile();
         CreateMainScene(zeroFriction, sandTile);
         ConfigureBuildSettings();
         AssetDatabase.SaveAssets();
@@ -61,7 +61,7 @@ public static class ProjectBuilder
         SerializedObject serializedController = new SerializedObject(controller);
         Require(serializedController.FindProperty("groundCheck").objectReferenceValue == groundCheck.transform, "GroundCheck reference must be assigned.");
         Require(serializedController.FindProperty("groundLayer").intValue == (1 << floorLayer), "Ground layer mask must target Floor.");
-        Require(Mathf.Approximately(serializedController.FindProperty("jumpForce").floatValue, 4f), "Jump force must be 4.");
+        Require(Mathf.Approximately(serializedController.FindProperty("jumpForce").floatValue, 6f), "Jump force must be 6.");
         Require(Mathf.Approximately(serializedController.FindProperty("groundRadius").floatValue, 0.1f), "Ground radius must be 0.1.");
         Require(Mathf.Approximately(body.gravityScale, 2f), "Player gravity scale must be 2.");
         Require(Mathf.Approximately(body.mass, 1f), "Player mass must be 1.");
@@ -71,6 +71,20 @@ public static class ProjectBuilder
         Require((body.constraints & RigidbodyConstraints2D.FreezeRotation) != 0, "Player Z rotation must be frozen.");
         Require(body.sharedMaterial != null && Mathf.Approximately(body.sharedMaterial.friction, 0f), "Player friction must be zero.");
         Require(playerRenderer.sortingOrder > RequireComponent<TilemapRenderer>(level).sortingOrder, "Player must render in front of the level.");
+
+        GameObject box = RequireObject(scene, "Box");
+        Rigidbody2D boxBody = RequireComponent<Rigidbody2D>(box);
+        RequireComponent<BoxCollider2D>(box);
+        RequireComponent<SpriteRenderer>(box);
+        Require(boxBody.bodyType == RigidbodyType2D.Dynamic, "Box must be dynamic.");
+        Require(boxBody.gravityScale > 0f, "Box must use gravity.");
+        Require((boxBody.constraints & RigidbodyConstraints2D.FreezeRotation) != 0, "Box Z rotation must be frozen.");
+
+        GameObject coin = RequireObject(scene, "Coin");
+        CircleCollider2D coinCollider = RequireComponent<CircleCollider2D>(coin);
+        RequireComponent<SpriteRenderer>(coin);
+        RequireComponent<Coin>(coin);
+        Require(coinCollider.isTrigger, "Coin collider must be a trigger.");
 
         Camera cameraComponent = RequireComponent<Camera>(cameraObject);
         Require(cameraComponent.orthographic, "Camera must be orthographic.");
@@ -171,7 +185,7 @@ public static class ProjectBuilder
         return material;
     }
 
-    private static TileBase CreateSandTile()
+    private static Tile CreateSandTile()
     {
         Tile tile = AssetDatabase.LoadAssetAtPath<Tile>(TilePath);
         if (tile == null)
@@ -187,7 +201,7 @@ public static class ProjectBuilder
         return tile;
     }
 
-    private static void CreateMainScene(PhysicsMaterial2D zeroFriction, TileBase sandTile)
+    private static void CreateMainScene(PhysicsMaterial2D zeroFriction, Tile sandTile)
     {
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -243,6 +257,25 @@ public static class ProjectBuilder
         serializedController.FindProperty("groundCheck").objectReferenceValue = groundCheck.transform;
         serializedController.FindProperty("groundLayer").intValue = 1 << LayerMask.NameToLayer("Floor");
         serializedController.ApplyModifiedPropertiesWithoutUndo();
+
+        GameObject box = new GameObject("Box", typeof(SpriteRenderer), typeof(Rigidbody2D), typeof(BoxCollider2D));
+        box.transform.position = new Vector3(0f, -0.55f, 0f);
+        box.transform.localScale = new Vector3(0.75f, 0.75f, 1f);
+        SpriteRenderer boxRenderer = box.GetComponent<SpriteRenderer>();
+        boxRenderer.sprite = sandTile.sprite;
+        boxRenderer.sortingOrder = 5;
+        Rigidbody2D boxBody = box.GetComponent<Rigidbody2D>();
+        boxBody.constraints = RigidbodyConstraints2D.FreezeRotation;
+        boxBody.gravityScale = 1f;
+
+        GameObject coin = new GameObject("Coin", typeof(SpriteRenderer), typeof(CircleCollider2D), typeof(Coin));
+        coin.transform.position = new Vector3(1.3f, -0.35f, 0f);
+        coin.transform.localScale = new Vector3(0.45f, 0.45f, 1f);
+        SpriteRenderer coinRenderer = coin.GetComponent<SpriteRenderer>();
+        coinRenderer.sprite = sandTile.sprite;
+        coinRenderer.color = Color.yellow;
+        coinRenderer.sortingOrder = 5;
+        coin.GetComponent<CircleCollider2D>().isTrigger = true;
 
         GameObject cameraObject = new GameObject("Main Camera", typeof(Camera), typeof(UniversalAdditionalCameraData));
         cameraObject.tag = "MainCamera";
