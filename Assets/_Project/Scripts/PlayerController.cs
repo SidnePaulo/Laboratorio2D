@@ -1,8 +1,12 @@
 using UnityEngine;
 
-[RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(Rigidbody2D), typeof(Animator))]
 public sealed class PlayerController : MonoBehaviour
 {
+    private static readonly int SpeedParameter = Animator.StringToHash("Speed");
+    private static readonly int VerticalVelocityParameter = Animator.StringToHash("VerticalVelocity");
+    private static readonly int IsGroundedParameter = Animator.StringToHash("IsGrounded");
+
     [SerializeField] private float speed = 2f;
     [SerializeField] private float jumpForce = 6f;
     [SerializeField] private Transform groundCheck;
@@ -11,6 +15,7 @@ public sealed class PlayerController : MonoBehaviour
 
     private Rigidbody2D body;
     private SpriteRenderer spriteRenderer;
+    private Animator animator;
     private float horizontalInput;
     private bool isGrounded;
 
@@ -18,6 +23,7 @@ public sealed class PlayerController : MonoBehaviour
     {
         body = GetComponent<Rigidbody2D>();
         spriteRenderer = GetComponent<SpriteRenderer>();
+        animator = GetComponent<Animator>();
     }
 
     private void Update()
@@ -34,6 +40,10 @@ public sealed class PlayerController : MonoBehaviour
         {
             spriteRenderer.flipX = horizontalInput < 0f;
         }
+
+        animator.SetFloat(SpeedParameter, Mathf.Abs(horizontalInput));
+        animator.SetFloat(VerticalVelocityParameter, body.linearVelocity.y);
+        animator.SetBool(IsGroundedParameter, isGrounded);
     }
 
     private void FixedUpdate()

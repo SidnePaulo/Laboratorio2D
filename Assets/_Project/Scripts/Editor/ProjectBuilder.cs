@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -10,8 +11,25 @@ using UnityEngine.Tilemaps;
 
 public static class ProjectBuilder
 {
+    private readonly struct TransitionCondition
+    {
+        public readonly AnimatorConditionMode Mode;
+        public readonly float Threshold;
+        public readonly string Parameter;
+
+        public TransitionCondition(AnimatorConditionMode mode, float threshold, string parameter)
+        {
+            Mode = mode;
+            Threshold = threshold;
+            Parameter = parameter;
+        }
+    }
+
     private const string Root = "Assets/_Project";
     private const string SpriteRoot = Root + "/Sprites";
+    private const string PlayerSpriteRoot = SpriteRoot + "/Player";
+    private const string AnimationRoot = Root + "/Animations/Player";
+    private const string AnimatorPath = AnimationRoot + "/Player.controller";
     private const string ScenePath = Root + "/Scenes/Main.unity";
     private const string MaterialPath = Root + "/Sprites/ZeroFriction.physicsMaterial2D";
     private const string TilePath = Root + "/Sprites/SandTile.asset";
@@ -23,7 +41,7 @@ public static class ProjectBuilder
         CopyMinimumSourceAssets();
         AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
         ConfigureTexture(SpriteRoot + "/background.png", 320, SpriteImportMode.Single);
-        ConfigureTexture(SpriteRoot + "/character_berie_idle_1.png", 100, SpriteImportMode.Single);
+        ConfigureTexture(PlayerSpriteRoot + "/Idle/character_berie_idle_1.png", 100, SpriteImportMode.Single);
         ConfigureTileSheet();
 
         ConfigureUniversal2D();
@@ -58,6 +76,7 @@ public static class ProjectBuilder
         RequireComponent<CapsuleCollider2D>(player);
         PlayerController controller = RequireComponent<PlayerController>(player);
         SpriteRenderer playerRenderer = RequireComponent<SpriteRenderer>(player);
+        Animator animator = RequireComponent<Animator>(player);
         SerializedObject serializedController = new SerializedObject(controller);
         Require(serializedController.FindProperty("groundCheck").objectReferenceValue == groundCheck.transform, "GroundCheck reference must be assigned.");
         Require(serializedController.FindProperty("groundLayer").intValue == (1 << floorLayer), "Ground layer mask must target Floor.");
@@ -71,6 +90,7 @@ public static class ProjectBuilder
         Require((body.constraints & RigidbodyConstraints2D.FreezeRotation) != 0, "Player Z rotation must be frozen.");
         Require(body.sharedMaterial != null && Mathf.Approximately(body.sharedMaterial.friction, 0f), "Player friction must be zero.");
         Require(playerRenderer.sortingOrder > RequireComponent<TilemapRenderer>(level).sortingOrder, "Player must render in front of the level.");
+        VerifyPlayerAnimations(animator);
 
         GameObject box = RequireObject(scene, "Box");
         Rigidbody2D boxBody = RequireComponent<Rigidbody2D>(box);
@@ -99,17 +119,213 @@ public static class ProjectBuilder
         Debug.Log("LABORATORIO2D_VERIFICATION_SUCCESS");
     }
 
+    public static void SetupPlayerAnimations()
+    {
+        EnsureDirectories();
+        AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        MoveLegacyIdleFrame();
+        CopyPlayerAnimationFrames();
+        AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+
+        foreach (string state in new[] { "Idle", "Run", "Jump", "Fall" })
+        {
+            string[] framePaths = GetFramePaths(state);
+            foreach (string framePath in framePaths)
+            {
+                ConfigureTexture(framePath, 100, SpriteImportMode.Single);
+            }
+        }
+
+        AnimationClip idle = CreateSpriteClip("Idle", 8f, true);
+        AnimationClip run = CreateSpriteClip("Run", 12f, true);
+        AnimationClip jump = CreateSpriteClip("Jump", 10f, false);
+        AnimationClip fall = CreateSpriteClip("Fall", 8f, true);
+        AnimatorController animatorController = CreatePlayerAnimator(idle, run, jump, fall);
+
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        GameObject player = RequireObject(scene, "Player");
+        Animator animator = player.GetComponent<Animator>();
+        if (animator == null)
+        {
+            animator = player.AddComponent<Animator>();
+        }
+        animator.runtimeAnimatorController = animatorController;
+        RequireComponent<SpriteRenderer>(player).sprite = AssetDatabase.LoadAssetAtPath<Sprite>(GetFramePaths("Idle")[0]);
+        EditorSceneManager.SaveScene(scene, ScenePath);
+        AssetDatabase.SaveAssets();
+        Debug.Log("LABORATORIO2D_PLAYER_ANIMATIONS_SETUP_SUCCESS");
+    }
+
     private static void EnsureDirectories()
     {
         Directory.CreateDirectory(SpriteRoot);
         Directory.CreateDirectory(Root + "/Scenes");
+        Directory.CreateDirectory(PlayerSpriteRoot + "/Idle");
+        Directory.CreateDirectory(PlayerSpriteRoot + "/Run");
+        Directory.CreateDirectory(PlayerSpriteRoot + "/Jump");
+        Directory.CreateDirectory(PlayerSpriteRoot + "/Fall");
+        Directory.CreateDirectory(AnimationRoot);
     }
 
     private static void CopyMinimumSourceAssets()
     {
         File.Copy(Path.Combine(SourceRoot, "PNG", "background.png"), SpriteRoot + "/background.png", true);
         File.Copy(Path.Combine(SourceRoot, "Spritesheet", "tilemap.png"), SpriteRoot + "/tilemap.png", true);
-        File.Copy(Path.Combine(SourceRoot, "PNG", "character_berie_idle_1.png"), SpriteRoot + "/character_berie_idle_1.png", true);
+        CopyPlayerAnimationFrames();
+    }
+
+    private static void MoveLegacyIdleFrame()
+    {
+        const string legacyPath = SpriteRoot + "/character_berie_idle_1.png";
+        string destinationPath = GetFramePaths("Idle")[0];
+        if (AssetDatabase.LoadAssetAtPath<Texture2D>(legacyPath) != null && AssetDatabase.LoadAssetAtPath<Texture2D>(destinationPath) == null)
+        {
+            string error = AssetDatabase.MoveAsset(legacyPath, destinationPath);
+            Require(string.IsNullOrEmpty(error), "Could not move the existing idle frame: " + error);
+        }
+    }
+
+    private static void CopyPlayerAnimationFrames()
+    {
+        foreach (string state in new[] { "Idle", "Run", "Jump", "Fall" })
+        {
+            string[] destinations = GetFramePaths(state);
+            for (int index = 0; index < destinations.Length; index++)
+            {
+                string sourceName = "character_berie_" + state.ToLowerInvariant() + "_" + (index + 1) + ".png";
+                File.Copy(Path.Combine(SourceRoot, "PNG", sourceName), destinations[index], true);
+            }
+        }
+    }
+
+    private static string[] GetFramePaths(string state)
+    {
+        int frameCount = state == "Run" ? 6 : state == "Fall" ? 2 : 4;
+        string[] paths = new string[frameCount];
+        for (int index = 0; index < frameCount; index++)
+        {
+            paths[index] = PlayerSpriteRoot + "/" + state + "/character_berie_" + state.ToLowerInvariant() + "_" + (index + 1) + ".png";
+        }
+        return paths;
+    }
+
+    private static AnimationClip CreateSpriteClip(string state, float frameRate, bool loop)
+    {
+        string clipPath = AnimationRoot + "/Player" + state + ".anim";
+        AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+        if (clip == null)
+        {
+            clip = new AnimationClip();
+            AssetDatabase.CreateAsset(clip, clipPath);
+        }
+        clip.name = "Player" + state;
+        clip.frameRate = frameRate;
+        EditorCurveBinding binding = new EditorCurveBinding
+        {
+            path = string.Empty,
+            type = typeof(SpriteRenderer),
+            propertyName = "m_Sprite"
+        };
+        string[] framePaths = GetFramePaths(state);
+        ObjectReferenceKeyframe[] keyframes = new ObjectReferenceKeyframe[framePaths.Length];
+        for (int index = 0; index < framePaths.Length; index++)
+        {
+            Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(framePaths[index]);
+            Require(sprite != null, "Missing animation sprite: " + framePaths[index]);
+            keyframes[index] = new ObjectReferenceKeyframe { time = index / frameRate, value = sprite };
+        }
+        AnimationUtility.SetObjectReferenceCurve(clip, binding, keyframes);
+        AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(clip);
+        settings.loopTime = loop;
+        AnimationUtility.SetAnimationClipSettings(clip, settings);
+        EditorUtility.SetDirty(clip);
+        return clip;
+    }
+
+    private static AnimatorController CreatePlayerAnimator(AnimationClip idle, AnimationClip run, AnimationClip jump, AnimationClip fall)
+    {
+        AssetDatabase.DeleteAsset(AnimatorPath);
+        AnimatorController controller = AnimatorController.CreateAnimatorControllerAtPath(AnimatorPath);
+        controller.AddParameter("Speed", AnimatorControllerParameterType.Float);
+        controller.AddParameter("VerticalVelocity", AnimatorControllerParameterType.Float);
+        controller.AddParameter("IsGrounded", AnimatorControllerParameterType.Bool);
+        AnimatorStateMachine machine = controller.layers[0].stateMachine;
+        AnimatorState idleState = machine.AddState("Idle", new Vector3(200f, 0f));
+        AnimatorState runState = machine.AddState("Run", new Vector3(450f, 0f));
+        AnimatorState jumpState = machine.AddState("Jump", new Vector3(200f, 150f));
+        AnimatorState fallState = machine.AddState("Fall", new Vector3(450f, 150f));
+        idleState.motion = idle;
+        runState.motion = run;
+        jumpState.motion = jump;
+        fallState.motion = fall;
+        machine.defaultState = idleState;
+
+        AddTransition(idleState, runState, new TransitionCondition(AnimatorConditionMode.Greater, 0.01f, "Speed"));
+        AddTransition(runState, idleState, new TransitionCondition(AnimatorConditionMode.Less, 0.01f, "Speed"));
+        AddAirTransitions(idleState, jumpState, fallState);
+        AddAirTransitions(runState, jumpState, fallState);
+        AddTransition(jumpState, fallState, new TransitionCondition(AnimatorConditionMode.Less, 0f, "VerticalVelocity"));
+        AddTransition(fallState, idleState,
+            new TransitionCondition(AnimatorConditionMode.If, 0f, "IsGrounded"),
+            new TransitionCondition(AnimatorConditionMode.Less, 0.01f, "Speed"));
+        AddTransition(fallState, runState,
+            new TransitionCondition(AnimatorConditionMode.If, 0f, "IsGrounded"),
+            new TransitionCondition(AnimatorConditionMode.Greater, 0.01f, "Speed"));
+        return controller;
+    }
+
+    private static void AddAirTransitions(AnimatorState source, AnimatorState jump, AnimatorState fall)
+    {
+        AddTransition(source, jump,
+            new TransitionCondition(AnimatorConditionMode.IfNot, 0f, "IsGrounded"),
+            new TransitionCondition(AnimatorConditionMode.Greater, 0f, "VerticalVelocity"));
+        AddTransition(source, fall,
+            new TransitionCondition(AnimatorConditionMode.IfNot, 0f, "IsGrounded"),
+            new TransitionCondition(AnimatorConditionMode.Less, 0f, "VerticalVelocity"));
+    }
+
+    private static void AddTransition(AnimatorState source, AnimatorState destination, params TransitionCondition[] conditions)
+    {
+        AnimatorStateTransition transition = source.AddTransition(destination);
+        transition.hasExitTime = false;
+        transition.duration = 0f;
+        transition.hasFixedDuration = true;
+        foreach (TransitionCondition condition in conditions)
+        {
+            transition.AddCondition(condition.Mode, condition.Threshold, condition.Parameter);
+        }
+    }
+
+    private static void VerifyPlayerAnimations(Animator animator)
+    {
+        AnimatorController controller = animator.runtimeAnimatorController as AnimatorController;
+        Require(controller != null && AssetDatabase.GetAssetPath(controller) == AnimatorPath, "Player Animator must reference Player.controller.");
+        Require(controller.parameters.Length == 3, "Player Animator must have exactly three parameters.");
+        Require(Array.Exists(controller.parameters, item => item.name == "Speed" && item.type == AnimatorControllerParameterType.Float), "Player Animator requires float Speed.");
+        Require(Array.Exists(controller.parameters, item => item.name == "VerticalVelocity" && item.type == AnimatorControllerParameterType.Float), "Player Animator requires float VerticalVelocity.");
+        Require(Array.Exists(controller.parameters, item => item.name == "IsGrounded" && item.type == AnimatorControllerParameterType.Bool), "Player Animator requires bool IsGrounded.");
+
+        ChildAnimatorState[] states = controller.layers[0].stateMachine.states;
+        Require(states.Length == 4, "Player Animator must have exactly four states.");
+        foreach (string stateName in new[] { "Idle", "Run", "Jump", "Fall" })
+        {
+            AnimatorState state = Array.Find(states, item => item.state.name == stateName).state;
+            Require(state != null, "Missing Animator state: " + stateName);
+            Require(state.motion == AssetDatabase.LoadAssetAtPath<AnimationClip>(AnimationRoot + "/Player" + stateName + ".anim"), stateName + " must reference its matching clip.");
+            foreach (AnimatorStateTransition transition in state.transitions)
+            {
+                Require(!transition.hasExitTime && Mathf.Approximately(transition.duration, 0f), stateName + " transitions must be immediate and have no exit time.");
+            }
+
+            ObjectReferenceKeyframe[] frames = AnimationUtility.GetObjectReferenceCurve((AnimationClip)state.motion,
+                new EditorCurveBinding { path = string.Empty, type = typeof(SpriteRenderer), propertyName = "m_Sprite" });
+            string[] expectedPaths = GetFramePaths(stateName);
+            Require(frames != null && frames.Length == expectedPaths.Length, stateName + " clip has an incorrect frame count.");
+            for (int index = 0; index < expectedPaths.Length; index++)
+            {
+                Require(AssetDatabase.GetAssetPath(frames[index].value) == expectedPaths[index], stateName + " clip has an incorrect frame at index " + index + ".");
+            }
+        }
     }
 
     private static void ConfigureTexture(string path, int pixelsPerUnit, SpriteImportMode mode)
