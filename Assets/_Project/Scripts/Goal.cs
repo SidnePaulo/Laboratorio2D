@@ -88,14 +88,28 @@ public sealed class Goal : MonoBehaviour
             victoryText.text = "¡Nivel completado!";
         }
 
-        // Optional secondary text for count
+        // Secondary text shows "Monedas: X/5" using current CoinCount
         if (finalCountTextObject != null)
         {
             Text countText = finalCountTextObject.GetComponent<Text>();
             if (countText != null)
             {
-                countText.text = count.ToString("D2") + " / 05";
+                countText.text = "Monedas: " + count + "/5";
             }
+            else
+            {
+                // Fallback if object has Text on children
+                Text childText = finalCountTextObject.GetComponentInChildren<Text>();
+                if (childText != null)
+                {
+                    childText.text = "Monedas: " + count + "/5";
+                }
+            }
+        }
+        else if (victoryText != null)
+        {
+            // Fallback: append count to main text if secondary object missing
+            victoryText.text = "¡Nivel completado! Monedas: " + count + "/5";
         }
 
         // SFX

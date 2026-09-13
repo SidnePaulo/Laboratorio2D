@@ -410,8 +410,8 @@ public static class ProjectBuilder
         cameraBounds.SetPath(0, new[]
         {
             new Vector2(-9.6f, -3.6f),
-            new Vector2(19.2f, -3.6f),
-            new Vector2(19.2f, 4f),
+            new Vector2(22f, -3.6f),
+            new Vector2(22f, 4f),
             new Vector2(-9.6f, 4f)
         });
 
@@ -1169,10 +1169,11 @@ public static class ProjectBuilder
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
         GameObject backgrounds = new GameObject("Backgrounds");
+        // 5 panels extended to cover enlarged confiner 22 (was -9.6..19.2 now -9.6..22). Keep 5 panels, 6.96 width continuous coverage.
         for (int index = 0; index < 5; index++)
         {
             GameObject background = CreateDecoration("Background " + (index + 1), AssetDatabase.LoadAssetAtPath<Sprite>(BackgroundPath),
-                new Vector3(-9.6f + index * 6.4f, 0.2f, 2f), new Vector3(6.4f, 14.4f, 1f), -10, backgrounds.transform);
+                new Vector3(-9.32f + index * 6.96f, 0.2f, 2f), new Vector3(6.96f, 14.4f, 1f), -10, backgrounds.transform);
         }
 
         GameObject gridObject = new GameObject("Grid", typeof(Grid));
@@ -1744,15 +1745,16 @@ public static class ProjectBuilder
         }
 
         goalObject = new GameObject("Goal", typeof(SpriteRenderer), typeof(BoxCollider2D), typeof(Goal), typeof(AudioSource));
-        goalObject.transform.position = new Vector3(18.8f, 2.0f, 0f);
+        // Final platform Goal Reserve 55..60 => world 17.6..19.2 center 18.4, top ~1.28, Goal +0.22 above for walkable trigger
+        goalObject.transform.position = new Vector3(18.4f, 1.5f, 0f);
         goalObject.transform.localScale = new Vector3(1.2f, 1.2f, 1f);
         SpriteRenderer sr = goalObject.GetComponent<SpriteRenderer>();
         sr.sprite = goalSprite;
         sr.sortingOrder = 5;
         BoxCollider2D col = goalObject.GetComponent<BoxCollider2D>();
         col.isTrigger = true;
-        col.size = new Vector2(0.6f, 0.9f);
-        col.offset = new Vector2(0f, 0.1f);
+        col.size = new Vector2(1.5f, 1.0f);
+        col.offset = new Vector2(0f, 0.15f);
         AudioSource audioSrc = goalObject.GetComponent<AudioSource>();
         audioSrc.playOnAwake = false;
         audioSrc.loop = false;
@@ -1806,7 +1808,7 @@ public static class ProjectBuilder
         countRect.anchoredPosition = new Vector2(0f, -30f);
         countRect.sizeDelta = new Vector2(300f, 60f);
         Text countText = countObj.GetComponent<Text>();
-        countText.text = "00 / 05";
+        countText.text = "Monedas: 0/5";
         countText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         countText.fontSize = 32;
         countText.fontStyle = FontStyle.Bold;
