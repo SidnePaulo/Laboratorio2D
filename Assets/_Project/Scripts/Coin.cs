@@ -1,12 +1,22 @@
+using System;
 using UnityEngine;
 
 public sealed class Coin : MonoBehaviour
 {
+    public event Action<Coin> Collected;
+
+    private bool isCollected;
+
     private void OnTriggerEnter2D(Collider2D other)
     {
-        if (other.GetComponent<PlayerController>() != null)
+        if (isCollected || !other.CompareTag("Player"))
         {
-            Destroy(gameObject);
+            return;
         }
+
+        isCollected = true;
+        Collected?.Invoke(this);
+        gameObject.SetActive(false);
+        Destroy(gameObject);
     }
 }
